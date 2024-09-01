@@ -1,0 +1,169 @@
+
+
+#----------Olympics_History Data andlysis using MySQL------------
+
+
+#select * from olympics_history 
+#select * from olympics_history_noc_regions
+
+#----------------------------------------------------------------
+
+
+#1. count the number of Participation for esach person than Rank desc
+
+select name, count(name) as Participation_Count
+from olympics_history
+group by name
+order by Participation_Count desc 
+
+
+#2. Which year saw the highest and lowest no of countries participating in olympics
+
+with all_countries as (
+	 select a.games , b.region
+	 from olympics_history a
+	 join olympics_history_noc_regions b
+	 on a.noc = b.noc
+	 group by a.games, b.region),
+	 count_countries as (
+	 select games, count(1) as total_countries
+		from all_countries
+		group by games
+	 )
+select distinct 
+concat(first_value(games) over(order by total_countries ),
+       '-',
+       first_value(total_countries) over(order by total_countries)) as Lowest_Countries,
+concat(first_value(games) over(order by total_countries desc ),
+       '-',
+       first_value(total_countries) over(order by total_countries desc)) as Highest_Countries
+from count_countries
+order by 1
+
+#3. Identify the sport which was played in all summer olympics.
+
+with summer_sports as(
+    select  sport , count(distinct year) as sports_count
+    from olympics_history
+    where season = 'Summer'
+    group by sport
+),
+all_summers_count as ( 
+select  count(distinct year) as summers_count
+from olympics_history
+where season = 'Summer'
+
+)
+select a.*
+from summer_sports as a
+join all_summers_count as b
+on a.sports_count = b.summers_count
+group by sport
+
+
+#4. Which nation has participated in all of the olympic games
+ 
+  
+with nations_games_noc as (
+	select noc, count(distinct games) games_count
+	from olympics_history
+	group by 1
+    ),
+	nations_games_region as (
+	select a.* , b.region 
+	from nations_games_noc a 
+	join olympics_history_noc_regions b
+	on a.noc = b.noc
+	group by a.noc
+    ),
+   total_games as (
+	select count(distinct games ) total_games_count 
+	from olympics_history
+	),
+    reult as (
+	select a.region , a.games_count 
+	from nations_games_region a
+	join total_games b
+	on a.games_count = b.total_games_count
+	group by 1,2
+    )
+select * from reult
+
+ #5. Which Sports were just played only once in the olympics.
+
+with count_sport as(
+	select sport, count(distinct games) as num_played
+	from olympics_history
+	group by sport
+	)
+select sport from count_sport
+where num_played = 1
+
+ #6. Fetch the total no of sports played in each olympic games.
+
+with t1 as (
+		select distinct games ,  sport
+		from olympics_history
+		),
+	 t2 as (
+	 	select games, count(1) as no_sports
+	 	from t1
+	 	group by games
+		 )
+ select * from t2
+ order by no_sports desc 
+ 
+ #7. Find the Ratio of male and female athletes participated in all olympic games.
+
+with t1 as (
+		select games,
+		count(1) no_athletes_T
+		from olympics_history
+		group by games
+			),
+	t2 as (
+	select games,
+		count(1) no_athletes_M
+		from olympics_history
+		where sex = 'M'
+		group by games
+		),
+		
+	t3 as (
+	select games,
+		count(1) no_athletes_F
+		from olympics_history
+		where sex = 'F'
+		group by games
+		),
+		
+	t4 as (
+	    select t1.no_athletes_T ,t1.games,  t2.no_athletes_M
+	    from t1 join t2 on t1.games = t2.games
+		),
+		
+	t5 as (
+	    select t4.*, t3.no_athletes_F 
+	    from t4 join t3 on t4.games = t3.games
+		)
+select * , concat(cast(round((no_athletes_M/no_athletes_T)*100, 2)  as CHAR),'%')  as pct_male,
+           concat(cast(round(((no_athletes_F/no_athletes_T))*100, 2)  as CHAR),'%')  as pct_female
+from t5
+		
+
+#8. Top 5 most successful countries in olympics. Success is defined by no of medals won.
+
+with t1 as
+            (select nr.region, count(1) as total_medals
+            from olympics_history oh
+            join olympics_history_noc_regions nr on nr.noc = oh.noc
+            where medal <> 'NA'
+            group by nr.region
+            order by total_medals desc),
+        t2 as
+            (select *, dense_rank() over(order by total_medals desc) as rnk
+            from t1)
+    select *
+    from t2
+    where rnk <= 5;
+
